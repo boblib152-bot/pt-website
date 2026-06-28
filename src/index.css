@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Custom palette matching a luxurious "Professional Polish" bespoke training studio */
+  --color-brand-50: #F5F5F0;     /* Soft Warm Cream Sand background */
+  --color-brand-100: #E5E2DE;    /* Soft stone divider beige */
+  --color-brand-500: #2C3E50;    /* Elite Slate Blue / Deep Navy */
+  --color-brand-600: #1E2D3D;    /* Darker Deep Navy */
+  --color-brand-700: #141F2B;    
+  --color-accent-amber: #C0392B; /* Elegant Royal Crimson Accent */
+  --color-accent-gold: #D4AF37;  /* Soft Luxurious Gold Accent */
+  --color-slate-950: #1A1A1A;    /* Absolute Body Charcoal */
+  --color-luxury-sand: #FDFCFB;  /* Signature Page Backdrop */
+}
+
+/* Base custom classes to enhance UI */
+@layer base {
+  body {
+    @apply font-sans antialiased text-slate-950 bg-[#FDFCFB] selection:bg-brand-500 selection:text-white;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif font-semibold tracking-tight text-brand-600;
+  }
+}
+
+/* Custom premium scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #E5E2DE;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #C8C5C1;
+}
+
+/* Diagnostic grid card shine */
+.premium-glow {
+  box-shadow: 0 2px 12px rgba(44, 62, 80, 0.02);
+  border: 1px solid #E5E2DE;
+}
+

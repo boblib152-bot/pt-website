@@ -1,0 +1,6 @@
+{
+  "name": "NASM In-Home Personal Training",
+  "description": "Premium in-home personal training for active aging, strength, and life-changing body transformations. Certified NASM personal trainer delivering custom 45-minute sessions to your home.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
