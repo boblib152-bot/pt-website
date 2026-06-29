@@ -124,14 +124,14 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
         {/* Module Title Card */}
         <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
           <span className="font-sans text-[10px] uppercase tracking-widest text-[#C0392B] font-bold block">
-            Direct Phone Consultation
+            Get Started Today
           </span>
           <h2 className="text-3xl sm:text-4xl font-serif text-[#2C3E50] tracking-tight">
-            Schedule Your Phone Consultation.
+            Request a Free Consultation.
           </h2>
           <div className="w-12 h-0.5 bg-[#D4AF37] mx-auto mt-2"></div>
           <p className="text-[#5D6D7E] text-sm leading-relaxed max-w-lg mx-auto">
-            Select your preferred consultation date and time slot. Hanoch Lib will call you directly to discuss your fitness goals and answer any questions.
+            Ready to take the first step? Select a convenient date and time for a complimentary 15-minute consultation. We'll discuss your fitness goals, health history, and how we can best support you.
           </p>
         </div>
 
@@ -186,12 +186,12 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
                 </div>
 
                 <div>
-                  <span className="font-sans text-[9px] text-[#7F8C8D] uppercase font-bold tracking-widest block mb-0.5">Phone Consultation Number</span>
+                  <span className="font-sans text-[9px] text-[#7F8C8D] uppercase font-bold tracking-widest block mb-0.5">Contact Number</span>
                   <span className="text-xs font-medium text-[#2C3E50] flex items-start gap-1">
                     <Phone className="w-4 h-4 text-[#C0392B] shrink-0 mt-0.5" />
                     <div>
                       <span className="block font-bold text-stone-900">{confirmedTicket.clientPhone}</span>
-                      <span className="text-stone-500">Hanoch will call this number at the scheduled time</span>
+                      <span className="text-stone-500">We will call you at your selected time.</span>
                     </div>
                   </span>
                 </div>
@@ -226,19 +226,20 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
               {/* Section 1: Choose Timing */}
               <div className="space-y-4">
                 <h4 className="font-serif font-bold text-base text-[#2C3E50] border-b border-[#E5E2DE] pb-2">
-                  Step 1: Choose Consultation Date & Time Slot
+                  Step 1: Select Date & Time
                 </h4>
 
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-2 tracking-wider">Available Consultation Dates</label>
+                    <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-2 tracking-wider">Available Dates</label>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                       {dayOptions.map((day) => (
                         <button
                           key={day.rawDate}
+                          id={`booking_date_${day.rawDate}`}
                           type="button"
                           onClick={() => setSelectedDate(day.rawDate)}
-                          className={`px-3.5 py-3 rounded-sm border text-center text-xs transition-all cursor-pointer ${
+                          className={`px-3.5 py-3 rounded-sm border text-center text-xs transition-all duration-300 cursor-pointer ${
                             selectedDate === day.rawDate
                               ? 'bg-[#2C3E50] text-[#FDFCFB] font-bold border-[#1A1A1A] shadow-sm'
                               : 'bg-white border-[#E5E2DE] hover:bg-[#F5F5F0] text-[#2C3E50] font-normal'
@@ -252,14 +253,15 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider">Available Time Slots</label>
+                    <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider">Available Times</label>
                     <div className="space-y-2">
                       {timeSlots.map((slot) => (
                         <button
                           key={slot.value}
+                          id={`booking_time_${slot.value.replace(/[^a-zA-Z0-9]/g, '')}`}
                           type="button"
                           onClick={() => setSelectedTimeSlot(slot.value)}
-                          className={`w-full p-3.5 rounded-sm border text-left text-xs transition-all flex items-center gap-3 cursor-pointer ${
+                          className={`w-full p-3.5 rounded-sm border text-left text-xs transition-all duration-300 flex items-center gap-3 cursor-pointer ${
                             selectedTimeSlot === slot.value
                               ? 'bg-[#F5F5F0] border-[#D4AF37] text-[#2C3E50] font-bold'
                               : 'bg-white border-[#E5E2DE] hover:bg-[#F5F5F0] text-stone-600'
@@ -283,13 +285,15 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="sm:col-span-1">
-                    <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider flex items-center gap-1">
+                    <label htmlFor="booking_client_name" className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider flex items-center gap-1">
                       <User className="w-3.5 h-3.5" />
                       <span>First & Last Name</span>
                     </label>
                     <input 
+                      id="booking_client_name"
+                      name="clientName"
                       type="text" 
-                      placeholder="Arthur Pendelton"
+                      placeholder="Arthur Pendleton"
                       value={clientName}
                       onChange={(e) => setClientName(e.target.value)}
                       className="w-full bg-[#FDFCFB] border border-[#E5E2DE] rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-[#2C3E50] focus:bg-white transition"
@@ -298,11 +302,13 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider flex items-center gap-1">
+                    <label htmlFor="booking_client_email" className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider flex items-center gap-1">
                       <Mail className="w-3.5 h-3.5" />
                       <span>Email Address</span>
                     </label>
                     <input 
+                      id="booking_client_email"
+                      name="clientEmail"
                       type="email" 
                       placeholder="arthur@gmail.com"
                       value={clientEmail}
@@ -313,11 +319,13 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider flex items-center gap-1">
+                    <label htmlFor="booking_client_phone" className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider flex items-center gap-1">
                       <Phone className="w-3.5 h-3.5" />
                       <span>Phone Number</span>
                     </label>
                     <input 
+                      id="booking_client_phone"
+                      name="clientPhone"
                       type="tel" 
                       placeholder="(516) 555-0199"
                       value={clientPhone}
@@ -329,8 +337,10 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
                 </div>
 
                 <div className="pt-2">
-                  <label className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider">Additional Information</label>
+                  <label htmlFor="booking_client_notes" className="block text-[10px] font-sans uppercase font-semibold text-[#7F8C8D] mb-1.5 tracking-wider">Additional Information</label>
                   <textarea 
+                    id="booking_client_notes"
+                    name="additionalNotes"
                     placeholder="e.g. Any health goals, fitness history, or specific questions you'd like to discuss on the call..."
                     value={additionalNotes}
                     onChange={(e) => setAdditionalNotes(e.target.value)}
@@ -343,7 +353,7 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
               {/* Submit button container */}
               <div className="pt-4 border-t border-[#E5E2DE] flex flex-col sm:flex-row justify-between items-center gap-6 text-left">
                 <div className="text-stone-400 text-[10px] leading-relaxed max-w-sm font-sans">
-                  By submitting, Hanoch Lib will reach out directly at the scheduled time for your custom call.
+                  We respect your privacy. Your information is kept secure and will only be used to contact you for your scheduled consultation.
                 </div>
                 
                 <button
@@ -351,7 +361,7 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
                   className="w-full sm:w-auto bg-[#C0392B] hover:bg-[#A93226] text-white font-bold uppercase tracking-widest text-xs px-8 py-4.5 rounded-sm border border-[#C0392B] hover:shadow transition-all duration-200 cursor-pointer"
                   id="submit_booking_form"
                 >
-                  Book Call
+                  Schedule Consultation
                 </button>
               </div>
 
@@ -371,14 +381,14 @@ export default function BookingForm({ onAddBooking }: BookingFormProps) {
               <Check className="w-5 h-5 text-[#C0392B] shrink-0 mt-0.5" />
               <div className="text-xs text-[#5D6D7E]">
                 <strong className="block text-[#2C3E50] font-semibold">NASM Specialist Certified</strong>
-                <span>Highest gold-standard credential indicators</span>
+                <span>Highest gold-standard training credentials</span>
               </div>
             </div>
             <div className="flex items-center md:items-start justify-center md:justify-start gap-2.5">
               <Check className="w-5 h-5 text-[#C0392B] shrink-0 mt-0.5" />
               <div className="text-xs text-[#5D6D7E]">
-                <strong className="block text-[#2C3E50] font-semibold">Active CPR & AED certified</strong>
-                <span>Zero-compromise safety for your wellness</span>
+                <strong className="block text-[#2C3E50] font-semibold">Active CPR & AED Certified</strong>
+                <span>Certified safety protocols for client protection</span>
               </div>
             </div>
           </div>

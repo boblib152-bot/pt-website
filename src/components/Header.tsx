@@ -35,29 +35,32 @@ export default function Header({ onScrollTo, isDashboardOpen, onToggleDashboard 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
             <button
+              id="nav_specialties_btn"
               onClick={() => {
                 if (isDashboardOpen) onToggleDashboard();
                 setTimeout(() => onScrollTo('specialties'), 100);
               }}
-              className="text-[#5D6D7E] hover:text-[#C0392B] text-xs uppercase tracking-widest transition-colors font-medium"
+              className="text-[#5D6D7E] hover:text-[#C0392B] text-xs uppercase tracking-widest transition-colors duration-300 font-medium cursor-pointer"
             >
               Specialties
             </button>
             <button
+              id="nav_methodology_btn"
               onClick={() => {
                 if (isDashboardOpen) onToggleDashboard();
                 setTimeout(() => onScrollTo('method'), 100);
               }}
-              className="text-[#5D6D7E] hover:text-[#C0392B] text-xs uppercase tracking-widest transition-colors font-medium"
+              className="text-[#5D6D7E] hover:text-[#C0392B] text-xs uppercase tracking-widest transition-colors duration-300 font-medium cursor-pointer"
             >
               The 45-Min Method
             </button>
             <button
+              id="nav_faq_btn"
               onClick={() => {
                 if (isDashboardOpen) onToggleDashboard();
                 setTimeout(() => onScrollTo('faq'), 100);
               }}
-              className="text-[#5D6D7E] hover:text-[#C0392B] text-xs uppercase tracking-widest transition-colors font-medium"
+              className="text-[#5D6D7E] hover:text-[#C0392B] text-xs uppercase tracking-widest transition-colors duration-300 font-medium cursor-pointer"
             >
               Logistics & FAQ
             </button>

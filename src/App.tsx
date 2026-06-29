@@ -13,8 +13,9 @@ import Methodology from './components/Methodology';
 import BookingForm from './components/BookingForm';
 import FAQ from './components/FAQ';
 import Portal from './components/Portal';
+import { sendEmailNotification } from './notifications';
 
-import { Booking, ClientProfile, FreeScheduleBlock } from './types';
+import { Booking, ClientProfile, FreeScheduleBlock, CompletedSession } from './types';
 import {
   seedDatabaseIfEmpty,
   listenToBookings,
@@ -30,14 +31,19 @@ import {
   deleteClientFromFirestore,
   addScheduleBlockInFirestore,
   deleteScheduleBlockFromFirestore,
-  bookScheduleBlockInFirestore
-} from './firebase';
+  bookScheduleBlockInFirestore,
+  addCompletedSession,
+  updateCompletedSessionNotes,
+  deleteCompletedSession,
+  listenToCompletedSessions
+} from './supabase';
 
 export default function App() {
   // Sync states directly with Firestore real-time snapshots
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [clients, setClients] = useState<ClientProfile[]>([]);
   const [scheduleBlocks, setScheduleBlocks] = useState<FreeScheduleBlock[]>([]);
+  const [completedSessions, setCompletedSessions] = useState<CompletedSession[]>([]);
 
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
 
@@ -50,12 +56,14 @@ export default function App() {
     const unsubBookings = listenToBookings(setBookings);
     const unsubClients = listenToClients(setClients);
     const unsubSchedule = listenToScheduleBlocks(setScheduleBlocks);
+    const unsubCompleted = listenToCompletedSessions(setCompletedSessions);
 
     // 3. Clean up listeners on component unmount
     return () => {
       unsubBookings();
       unsubClients();
       unsubSchedule();
+      unsubCompleted();
     };
   }, []);
 
@@ -71,8 +79,13 @@ export default function App() {
   const handleAddBooking = async (newBk: Booking) => {
     try {
       await addBookingInFirestore(newBk);
+      sendEmailNotification(
+        'New Consultation Inquiry Received',
+        `A new client has requested a free consultation.\n\nName: ${newBk.clientName}\nEmail: ${newBk.clientEmail}\nPhone: ${newBk.clientPhone}\nTarget Date: ${newBk.sessionDate}\nTime Slot: ${newBk.sessionTimeSlot}\n\nAdditional Notes: ${newBk.additionalNotes || 'None'}\n\nPlease review this in the PT Portal queue.`
+      );
     } catch (err) {
       console.error('Error adding booking in Firestore:', err);
+      throw err;
     }
   };
 
@@ -81,6 +94,7 @@ export default function App() {
       await updateBookingStatusInFirestore(id, status);
     } catch (err) {
       console.error('Error updating booking status in Firestore:', err);
+      throw err;
     }
   };
 
@@ -89,6 +103,7 @@ export default function App() {
       await updateBookingNotesInFirestore(id, notes);
     } catch (err) {
       console.error('Error updating booking notes in Firestore:', err);
+      throw err;
     }
   };
 
@@ -97,6 +112,7 @@ export default function App() {
       await deleteBookingFromFirestore(id);
     } catch (err) {
       console.error('Error deleting booking from Firestore:', err);
+      throw err;
     }
   };
 
@@ -106,6 +122,7 @@ export default function App() {
       await addClientInFirestore(newClient);
     } catch (err) {
       console.error('Error adding client in Firestore:', err);
+      throw err;
     }
   };
 
@@ -114,6 +131,7 @@ export default function App() {
       await updateClientSessionsInFirestore(id, paid, done);
     } catch (err) {
       console.error('Error updating client sessions in Firestore:', err);
+      throw err;
     }
   };
 
@@ -122,6 +140,7 @@ export default function App() {
       await updateClientNotesInFirestore(id, notes);
     } catch (err) {
       console.error('Error updating client notes in Firestore:', err);
+      throw err;
     }
   };
 
@@ -130,6 +149,7 @@ export default function App() {
       await deleteClientFromFirestore(id);
     } catch (err) {
       console.error('Error deleting client from Firestore:', err);
+      throw err;
     }
   };
 
@@ -139,6 +159,7 @@ export default function App() {
       await addScheduleBlockInFirestore(newBlock);
     } catch (err) {
       console.error('Error adding schedule block in Firestore:', err);
+      throw err;
     }
   };
 
@@ -147,14 +168,58 @@ export default function App() {
       await deleteScheduleBlockFromFirestore(id);
     } catch (err) {
       console.error('Error deleting schedule block from Firestore:', err);
+      throw err;
     }
   };
 
   const handleBookScheduleBlock = async (blockId: string, clientId: string | null, clientName: string | null) => {
     try {
+      const block = scheduleBlocks.find(b => b.id === blockId);
       await bookScheduleBlockInFirestore(blockId, clientId, clientName);
+      if (block) {
+        if (clientId) {
+          sendEmailNotification(
+            'Session Reserved by Client',
+            `Client ${clientName} has reserved a training session slot.\n\nDate: ${block.date}\nTime: ${block.startTime} - ${block.endTime}\n\nPlease check the PT Portal.`
+          );
+        } else {
+          sendEmailNotification(
+            'Session Released / Cancelled',
+            `A training session slot has been released/cancelled.\n\nPrevious Booked Client: ${block.bookedByClientName || 'N/A'}\nDate: ${block.date}\nTime: ${block.startTime} - ${block.endTime}\n\nPlease check the PT Portal.`
+          );
+        }
+      }
     } catch (err) {
       console.error('Error booking schedule block in Firestore:', err);
+      throw err;
+    }
+  };
+
+  // Completed session handlers
+  const handleAddCompletedSession = async (session: CompletedSession) => {
+    try {
+      await addCompletedSession(session);
+    } catch (err) {
+      console.error('Error adding completed session:', err);
+      throw err;
+    }
+  };
+
+  const handleUpdateCompletedSessionNotes = async (id: string, privateNotes: string, sharedNotes: string) => {
+    try {
+      await updateCompletedSessionNotes(id, privateNotes, sharedNotes);
+    } catch (err) {
+      console.error('Error updating completed session notes:', err);
+      throw err;
+    }
+  };
+
+  const handleDeleteCompletedSession = async (id: string) => {
+    try {
+      await deleteCompletedSession(id);
+    } catch (err) {
+      console.error('Error deleting completed session:', err);
+      throw err;
     }
   };
 
@@ -206,6 +271,11 @@ export default function App() {
                 onAddScheduleBlock={handleAddScheduleBlock}
                 onDeleteScheduleBlock={handleDeleteScheduleBlock}
                 onBookScheduleBlock={handleBookScheduleBlock}
+
+                completedSessions={completedSessions}
+                onAddCompletedSession={handleAddCompletedSession}
+                onUpdateCompletedSessionNotes={handleUpdateCompletedSessionNotes}
+                onDeleteCompletedSession={handleDeleteCompletedSession}
                 
                 onClose={() => setIsDashboardOpen(false)}
               />
@@ -271,24 +341,31 @@ export default function App() {
             {/* Travel Area Bounds Column */}
             <div className="space-y-3">
               <h4 className="text-[#D4AF37] font-serif font-bold italic text-sm border-b border-white/10 pb-1.5">
-                Direct Travel Areas
+                Service Areas
               </h4>
-              <ul className="space-y-2 text-xs text-white/85">
+              <p className="text-white/70 text-xs leading-relaxed">
+                Providing premium, private personal training services directly to residences throughout:
+              </p>
+              <ul className="grid grid-cols-2 gap-y-2 gap-x-4 text-xs text-white/85">
                 <li className="flex items-center gap-2">
                   <span className="text-[#D4AF37]">✦</span>
-                  <span>Cedarhurst (In-home strength & balance)</span>
+                  <span>Cedarhurst</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-[#D4AF37]">✦</span>
-                  <span>Woodmere (Active aging private workouts)</span>
+                  <span>Woodmere</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-[#D4AF37]">✦</span>
-                  <span>Lawrence (Joint care & physical fitness)</span>
+                  <span>Lawrence</span>
                 </li>
                 <li className="flex items-center gap-2">
                   <span className="text-[#D4AF37]">✦</span>
-                  <span>Hewlett & Inwood residences</span>
+                  <span>Hewlett</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="text-[#D4AF37]">✦</span>
+                  <span>Inwood</span>
                 </li>
               </ul>
             </div>
@@ -340,7 +417,7 @@ export default function App() {
                 id="footer_dashboard_trigger"
               >
                 <Briefcase className="w-3.5 h-3.5 text-[#C0392B]" />
-                <span>Trainer Access Vault</span>
+                <span>Trainer & Client Portal</span>
               </button>
             </div>
           </div>

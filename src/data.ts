@@ -9,27 +9,27 @@ export const FAQ_ITEMS: FAQItem[] = [
   {
     category: 'general',
     question: 'Why choose an in-home certified trainer?',
-    answer: 'In-home training skips the intimidation of busy gyms, commute stress, and waiting for equipment. Hanoch brings any required training gear directly to your door, tailoring the setup entirely around your physical space.'
+    answer: 'In-home training eliminates the intimidation of busy commercial gyms, commute times, and waiting for clean equipment. Hanoch brings specialized, pre-sanitized training gear directly to your residence, tailoring the workspace entirely to your home environment.'
   },
   {
     category: 'elderly',
     question: 'How do you structure training for seniors / older adults?',
-    answer: 'Our specialized active-aging training focuses on joint safety, body alignment, comfortable balance exercises to prevent falls, bone density support, and everyday mobility. We use safe, light resistance levels and supportive padding, ensuring you move naturally and without pain.'
+    answer: 'Our specialized active-aging protocols prioritize joint safety, proper alignment, fall prevention stability work, bone density support, and functional mobility. We utilize light resistance, supportive padding, and slow, controlled movement patterns to build strength pain-free.'
   },
   {
     category: 'logistics',
     question: 'What equipment do I need to own?',
-    answer: 'Absolutely none. Hanoch brings all necessary light gear to fit your workout. All we need is a clear 6x6 foot open space.'
+    answer: 'None. Hanoch brings all required tools—including supportive mats, resistance bands, and soft-grip weights—fully sanitized before each session. We only require a clear 6x6 foot open space.'
   },
   {
     category: 'pricing',
     question: 'What does a diagnostic session include?',
-    answer: 'The first consultation consists of a simple movement assessment (comfortable posture check, single-leg stability, core strength, and goal-mapping) followed by a gentle introductory 20-minute workout to see how your body feels. It is fully personalized and zero-pressure.'
+    answer: 'The initial consultation consists of a comprehensive movement assessment (posture screening, single-leg stability check, and core strength baseline) followed by goal-mapping and a gentle introductory movement sequence. It is fully personalized, comfortable, and zero-pressure.'
   },
   {
     category: 'logistics',
     question: 'Why exactly 45 minutes per session?',
-    answer: '45 minutes is the perfect sweet spot for private, in-home personal training. It allows 5 minutes of targeted warm-up, 35 minutes of highly focused balance and strength exercises, and 5 minutes of gentle, relaxing stretching. This maximizes workout density without causing energy fatigue, keeping you comfortable and consistent.'
+    answer: 'A 45-minute format represents the optimal duration for home-based training. It features a 5-minute targeted warm-up, 35 minutes of focused core stability and functional strength work, and a 5-minute progressive stretch cool-down. This maximizes workout density without causing energy crash or joint fatigue.'
   }
 ];
 
@@ -47,10 +47,10 @@ export const TESTIMONIALS: ReviewItem[] = [
     name: 'David Sterling',
     age: 48,
     location: 'Woodmere',
-    text: 'Working in venture capital, my schedule is chaotic. Having HANOCH pull into my driveway at 6:30 AM twice a week made fitness unavoidable. Over 6 months, my body fat dropped from 26% to 17% and my chronic lower back tightness completely evaporated.',
+    text: 'Working in venture capital, my schedule is chaotic. Having Hanoch arrive at my home at 6:30 AM twice a week made consistency automatic. Over six months, my functional strength improved significantly, and my chronic lower back tightness completely resolved.',
     rating: 5,
     tags: ['Body Transformation', 'Strength'],
-    transformation: '-18 lbs fat, zero lumbar pain through core strengthening.'
+    transformation: 'Significant improvements in lean strength and complete relief from chronic lumbar tightness.'
   },
   {
     name: 'Margaret & Arthur',
@@ -58,8 +58,8 @@ export const TESTIMONIALS: ReviewItem[] = [
     location: 'Lawrence',
     text: 'We train together twice a week. Arthur wanted to improve his bone density and I wanted to climb stairs with groceries. Hanoch monitors our heart rates, brings soft pads, and writes custom charts. It has given us our physical freedom back.',
     rating: 5,
-    tags: ['Active Aging', 'Couple Cardio'],
-    transformation: 'Vastly improved posture score & easy grocery carries.'
+    tags: ['Active Aging', 'Joint Coordination & Balance'],
+    transformation: 'Vastly improved posture score & enhanced capability for daily tasks.'
   }
 ];
 

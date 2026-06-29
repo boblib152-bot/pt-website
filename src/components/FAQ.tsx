@@ -34,14 +34,14 @@ export default function FAQ() {
         {/* Module Header */}
         <div className="text-center max-w-2xl mx-auto mb-12 space-y-4">
           <span className="font-sans text-[10px] uppercase tracking-widest text-[#C0392B] font-bold block">
-            Answering Your Logistical Concerns
+            Clear Answers for Your Peace of Mind
           </span>
           <h2 className="text-3xl sm:text-4xl font-serif text-[#2C3E50] tracking-tight">
-            Frequently Asked Logistics.
+            Frequently Asked Questions.
           </h2>
           <div className="w-12 h-0.5 bg-[#D4AF37] mx-auto mt-2"></div>
           <p className="text-[#5D6D7E] text-xs sm:text-sm leading-relaxed max-w-md mx-auto">
-            Everything you need to know about space footprint sizing, professional safety standards, and customized NASM training parameters.
+            Everything you need to know about space requirements, professional safety standards, and customized NASM training parameters.
           </p>
         </div>
 
@@ -50,11 +50,12 @@ export default function FAQ() {
           {categories.map((cat) => (
             <button
               key={cat.key}
+              id={`faq_tab_${cat.key}`}
               onClick={() => {
                 setActiveCategory(cat.key);
                 setActiveIdx(null); // Reset open states on filter change
               }}
-              className={`px-4 py-2.5 rounded-sm text-[10px] font-bold uppercase tracking-widest transition cursor-pointer ${
+              className={`px-4 py-2.5 rounded-sm text-[10px] font-bold uppercase tracking-widest transition duration-300 cursor-pointer ${
                 activeCategory === cat.key
                   ? 'bg-[#2C3E50] text-[#FDFCFB] border border-[#1A1A1A] shadow-xs'
                   : 'bg-white border border-[#E5E2DE] hover:bg-[#F5F5F0] text-[#2C3E50]'
@@ -72,7 +73,7 @@ export default function FAQ() {
             return (
               <div 
                 key={idx} 
-                className={`border rounded-sm transition duration-200 ${
+                className={`border rounded-sm transition duration-250 ${
                   isOpen 
                     ? 'bg-white border-[#1A1A1A] shadow-xs' 
                     : 'bg-white border-[#E5E2DE] hover:border-[#2C3E50]'
@@ -80,6 +81,7 @@ export default function FAQ() {
               >
                 {/* Trigger Button */}
                 <button
+                  id={`faq_accordion_btn_${idx}`}
                   onClick={() => toggleFAQ(idx)}
                   className="w-full flex justify-between items-center px-6 py-5 cursor-pointer text-left focus:outline-none"
                 >
@@ -132,7 +134,7 @@ export default function FAQ() {
           <div className="flex gap-3 items-start text-left">
             <MapPin className="w-5 h-5 text-[#C0392B] shrink-0 mt-0.5" />
             <div>
-              <h5 className="font-serif font-bold text-[#2C3E50] text-sm tracking-tight mb-1">Five Towns Dedicated Bounds</h5>
+              <h5 className="font-serif font-bold text-[#2C3E50] text-sm tracking-tight mb-1">Five Towns Service Area</h5>
               <p className="text-[11px] text-[#7F8C8D] leading-relaxed">
                 By focusing on the Five Towns area, we ensure zero arrival delays, staying on a precise schedule.
               </p>

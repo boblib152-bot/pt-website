@@ -10,26 +10,26 @@ export default function Methodology() {
   const steps = [
     {
       icon: <Home className="w-5 h-5 text-brand-500" />,
-      title: 'Punctual Arrival',
-      desc: 'Hanoch arrives exactly on time at your residence. No travel stress, membership cards, or busy parking lots. All training gear is fully pre-sanitized.',
+      title: 'Punctual Arrival & Setup',
+      desc: 'We respect your schedule. Hanoch arrives at your doorstep fully prepared and exactly on time, eliminating commute times and gym crowd stress.',
       time: '0 min'
     },
     {
       icon: <ClipboardList className="w-5 h-5 text-brand-500" />,
-      title: 'Minimum Footprint Setup',
-      desc: 'Hanoch sets up the gear in any clear 6x6 ft floor space. Your living room, patio, or spare room works perfectly with zero preparation or disruption to your floors.',
+      title: 'Minimal Space Required',
+      desc: 'All exercises are optimized to fit in a standard 6x6 ft area. Any living room, home office, or patio works perfectly, with no clean-up or prep needed.',
       time: '2 min'
     },
     {
       icon: <Zap className="w-5 h-5 text-brand-500" />,
-      title: 'Custom Strength & Balance',
-      desc: 'An active session designed around your safe pace. We alternate posture-support exercises and gentle mobility movements to help build strength and coordination.',
+      title: 'Tailored Active Session',
+      desc: 'A highly personalized blend of functional strength exercises, stability training, and balance work adapted in real-time to how you feel.',
       time: '38 min'
     },
     {
       icon: <Sparkles className="w-5 h-5 text-brand-500" />,
-      title: 'Stretching & Cool-down',
-      desc: 'Hanoch guides you through a comfortable stretching cool-down to ease muscular tension, improve joint range of motion, and leave you feeling energized.',
+      title: 'Stretch & Recovery',
+      desc: 'A focused, manual-assisted stretch session designed to relieve muscular tension, improve joint mobility, and accelerate recovery.',
       time: '5 min'
     }
   ];
@@ -42,37 +42,37 @@ export default function Methodology() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center mb-16">
           <div className="lg:col-span-6 space-y-4 text-left">
             <span className="font-sans text-xs uppercase tracking-[0.2em] text-[#C0392B] font-bold block">
-              The 45-Minute Standard
+              The 45-Minute Efficiency Standard
             </span>
             <h2 className="text-3xl sm:text-4xl font-serif font-normal text-[#2C3E50] tracking-tight leading-tight">
-              Maximum Healthy Strength. <br />
+              Optimal Fitness Results. <br />
               <span className="italic font-light text-[#C0392B]">Zero Stress Setup.</span>
             </h2>
             <p className="text-[#5D6D7E] text-sm leading-relaxed">
-              Why 45 minutes? Shorter, highly focused workouts are much safer for joints and match your body's energy levels perfectly. By focusing purely on custom balance and muscle exercises, we get excellent and safe results without over-exhaustion.
+              Why 45 minutes? Science shows that 45 minutes is the ideal duration for high-intensity or highly focused private training. It maximizes physical output, improves joint safety, and avoids the systemic fatigue that leads to injury.
             </p>
           </div>
 
           <div className="lg:col-span-6">
             {/* Quick trust assurances */}
             <div className="bg-white p-6 sm:p-8 rounded-sm border border-[#E5E2DE] shadow-sm space-y-4 text-left">
-              <h4 className="font-serif font-bold text-[#2C3E50] text-lg">Our Absolute In-Home Assurances:</h4>
+              <h4 className="font-serif font-bold text-[#2C3E50] text-lg">Our Premium In-Home Assurances:</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="flex items-start gap-2.5">
                   <CheckCircle className="w-4 h-4 text-[#C0392B] shrink-0 mt-0.5" />
-                  <span className="text-xs text-[#5D6D7E]"><strong>Quiet Setup:</strong> Gentle, carefully placed gear designed to respect your floors and home.</span>
+                  <span className="text-xs text-[#5D6D7E]"><strong>Respecting Your Home:</strong> Quiet setup using soft neoprene weights and protective training mats.</span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <CheckCircle className="w-4 h-4 text-[#C0392B] shrink-0 mt-0.5" />
-                  <span className="text-xs text-[#5D6D7E]"><strong>Sterilized Gear:</strong> Alcohol-wiped handles and ropes.</span>
+                  <span className="text-xs text-[#5D6D7E]"><strong>Sanitization Protocols:</strong> All equipment is thoroughly disinfected before entering your home.</span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <CheckCircle className="w-4 h-4 text-[#C0392B] shrink-0 mt-0.5" />
-                  <span className="text-xs text-[#5D6D7E]"><strong>No Floor Scratching:</strong> Soft neoprene-encased weights only.</span>
+                  <span className="text-xs text-[#5D6D7E]"><strong>Floor Protection:</strong> Use of rubberized, non-marking gear for pristine floors.</span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <CheckCircle className="w-4 h-4 text-[#C0392B] shrink-0 mt-0.5" />
-                  <span className="text-xs text-[#5D6E7E]"><strong>Absolute Privacy:</strong> Ideal for self-conscious or active senior clients.</span>
+                  <span className="text-xs text-[#5D6E7E]"><strong>One-on-One Privacy:</strong> Exercise comfortably in the safety and discretion of your home.</span>
                 </div>
               </div>
             </div>

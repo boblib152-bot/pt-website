@@ -83,3 +83,14 @@ export interface FreeScheduleBlock {
   bookedByClientName?: string;
 }
 
+export interface CompletedSession {
+  id: string;
+  clientId: string;
+  clientName: string;
+  date: string;
+  timeSlot: string;
+  privateNotes: string;
+  sharedNotes: string;
+  completedAt: string;
+}
+

@@ -36,7 +36,7 @@ export default function Hero({ onScrollTo }: HeroProps) {
                 <span className="italic font-light text-[#C0392B]">At Your Doorstep.</span>
               </h1>
               <p className="text-sm sm:text-base text-[#5D6D7E] max-w-xl leading-relaxed font-sans">
-                Seamless, private, 45-minute in-home personal training designed for safe balance improvement, healthy weight loss, and functional strength. Hanoch Lib brings all the equipment directly to your living room.
+                Transform your health with elite, 45-minute personal training sessions delivered directly to your home. Designed for active seniors, busy professionals, and adults seeking sustainable strength, balance, and health improvements without the stress of a commercial gym.
               </p>
             </div>
 
@@ -44,11 +44,11 @@ export default function Hero({ onScrollTo }: HeroProps) {
             <div className="flex flex-wrap items-center gap-y-3 gap-x-6 text-[#7F8C8D] text-xs uppercase tracking-wider">
               <div className="flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-[#C0392B]" />
-                <span>Travel Target: <strong className="text-[#2C3E50]">The Five Towns Area</strong></span>
+                <span>Service Area: <strong className="text-[#2C3E50]">Five Towns, NY</strong></span>
               </div>
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-accent-gold" />
-                <span>Structure: <strong className="text-[#2C3E50]">45-Minute Private Workouts</strong></span>
+                <span>Format: <strong className="text-[#2C3E50]">45-Minute Private Sessions</strong></span>
               </div>
             </div>
 
@@ -60,7 +60,7 @@ export default function Hero({ onScrollTo }: HeroProps) {
                 id="hero_cta_book"
               >
                 <Calendar className="w-4 h-4 text-[#E5E2DE]" />
-                <span>Schedule Phone Consultation</span>
+                <span>Schedule Consultation</span>
               </button>
             </div>
           </div>
@@ -94,7 +94,7 @@ export default function Hero({ onScrollTo }: HeroProps) {
                     <span className="text-[#2C3E50] font-bold">Precisely 45 Minutes</span>
                   </div>
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-[#7F8C8D] uppercase tracking-wider">Physical Assets</span>
+                    <span className="text-[#7F8C8D] uppercase tracking-wider">Training Equipment</span>
                     <span className="text-[#2C3E50] font-bold">Trainer Provided & Sanitized</span>
                   </div>
                 </div>
@@ -102,7 +102,7 @@ export default function Hero({ onScrollTo }: HeroProps) {
                 {/* Core Philosophy Notice */}
                 <div className="bg-[#F5F5F0]/60 p-4 rounded-sm border border-[#E5E2DE] text-left">
                   <p className="text-[#5D6D7E] text-xs leading-relaxed font-sans">
-                    Zero-pressure workouts designed fully around your joints, strength, and pace. We build physical freedom and confidence, so you can enjoy independent living at home.
+                    Custom, joint-friendly programs built entirely around your current fitness level, health goals, and individual pace. Empowering you to move with confidence, strength, and ease every day.
                   </p>
                 </div>
               </div>

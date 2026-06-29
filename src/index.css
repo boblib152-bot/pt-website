@@ -51,3 +51,27 @@
   border: 1px solid #E5E2DE;
 }
 
+/* Highly visible keyboard focus states to meet WCAG accessibility guidelines */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 1px;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: 2px;
+}
+
+/* Accessibility: Respect user's preferences for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

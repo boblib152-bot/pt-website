@@ -4,9 +4,43 @@ import {
   XCircle, Trash2, Edit3, Settings, User, LogOut, Key, Plus, 
   UserPlus, Info, CheckCircle2, ShieldCheck, Award
 } from 'lucide-react';
-import { Booking, ClientProfile, FreeScheduleBlock } from '../types';
-import { auth } from '../firebase';
-import { signInWithEmailAndPassword, signOut, onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { Booking, ClientProfile, FreeScheduleBlock, CompletedSession } from '../types';
+import { supabase, signUpNewClient } from '../supabase';
+import { User as SupabaseUser } from '@supabase/supabase-js';
+
+// Helper to parse time string (e.g. "09:00 AM") to minutes from midnight
+const parseTimeToMinutes = (timeStr: string): number => {
+  const [time, modifier] = timeStr.split(' ');
+  let [hours, minutes] = time.split(':').map(Number);
+  if (modifier === 'PM' && hours < 12) hours += 12;
+  if (modifier === 'AM' && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+};
+
+// Helper to format minutes to time string (e.g. 540 -> "09:00 AM")
+const formatMinutesToTime = (totalMinutes: number): string => {
+  let hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const modifier = hours >= 12 ? 'PM' : 'AM';
+  if (hours > 12) hours -= 12;
+  if (hours === 0) hours = 12;
+  const padHours = String(hours).padStart(2, '0');
+  const padMinutes = String(minutes).padStart(2, '0');
+  return `${padHours}:${padMinutes} ${modifier}`;
+};
+
+// Helper to format date for horizontal strip calendar (timezone-safe)
+const formatDateForStrip = (dateStr: string) => {
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    const weekday = d.toLocaleDateString('en-US', { weekday: 'short' });
+    const day = d.toLocaleDateString('en-US', { day: 'numeric' });
+    const month = d.toLocaleDateString('en-US', { month: 'short' });
+    return { weekday, day, month };
+  } catch (e) {
+    return { weekday: 'Day', day: dateStr.split('-')[2] || '??', month: 'Mo' };
+  }
+};
 
 interface PortalProps {
   bookings: Booking[];
@@ -24,6 +58,11 @@ interface PortalProps {
   onAddScheduleBlock: (newBlock: FreeScheduleBlock) => void;
   onDeleteScheduleBlock: (id: string) => void;
   onBookScheduleBlock: (blockId: string, clientId: string | null, clientName: string | null) => void;
+
+  completedSessions: CompletedSession[];
+  onAddCompletedSession: (session: CompletedSession) => Promise<void>;
+  onUpdateCompletedSessionNotes: (id: string, privateNotes: string, sharedNotes: string) => Promise<void>;
+  onDeleteCompletedSession: (id: string) => Promise<void>;
   
   onClose: () => void;
 }
@@ -44,11 +83,16 @@ export default function Portal({
   onAddScheduleBlock,
   onDeleteScheduleBlock,
   onBookScheduleBlock,
+
+  completedSessions,
+  onAddCompletedSession,
+  onUpdateCompletedSessionNotes,
+  onDeleteCompletedSession,
   
   onClose
 }: PortalProps) {
   // Session authentication states
-  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [userRole, setUserRole] = useState<'none' | 'admin' | 'client'>('none');
   const [currentClientId, setCurrentClientId] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -89,19 +133,36 @@ export default function Portal({
   const [newBlockEnd, setNewBlockEnd] = useState('10:30 AM');
   const [scheduleError, setScheduleError] = useState('');
 
-  // Effect to handle Firebase Auth state
+  // Completed Session States
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editPrivateNotes, setEditPrivateNotes] = useState('');
+  const [editSharedNotes, setEditSharedNotes] = useState('');
+  const [sessionNotesError, setSessionNotesError] = useState('');
+
+  const [isLoggingSession, setIsLoggingSession] = useState(false);
+  const [logSessionDate, setLogSessionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [logSessionStart, setLogSessionStart] = useState('09:00 AM');
+  const [logSessionEnd, setLogSessionEnd] = useState('09:45 AM');
+  const [logPrivateNotes, setLogPrivateNotes] = useState('');
+  const [logSharedNotes, setLogSharedNotes] = useState('');
+  const [logSessionError, setLogSessionError] = useState('');
+
+  // Calendar Filtering States
+  const [selectedClientBookingDate, setSelectedClientBookingDate] = useState<string | null>(null);
+  const [selectedTrainerCalendarDate, setSelectedTrainerCalendarDate] = useState<string | null>(null);
+
+  // Effect to handle Supabase Auth state
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setFirebaseUser(user);
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      const user = session?.user ?? null;
+      setSupabaseUser(user);
       if (user) {
-        // Determine role based on if their email matches a client's email
         const matchingClient = clients.find(c => c.email.toLowerCase() === user.email?.toLowerCase());
         if (matchingClient) {
           setUserRole('client');
           setCurrentClientId(matchingClient.id);
         } else {
-          // If no matching client profile, treat as admin
-          // Assuming the trainer creates an account for themselves not tied to a client profile
           setUserRole('admin');
           setCurrentClientId(null);
         }
@@ -112,8 +173,58 @@ export default function Portal({
       setAuthLoading(false);
     });
 
-    return () => unsubscribe();
+    // Listen to changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user ?? null;
+      setSupabaseUser(user);
+      if (user) {
+        const matchingClient = clients.find(c => c.email.toLowerCase() === user.email?.toLowerCase());
+        if (matchingClient) {
+          setUserRole('client');
+          setCurrentClientId(matchingClient.id);
+        } else {
+          setUserRole('admin');
+          setCurrentClientId(null);
+        }
+      } else {
+        setUserRole('none');
+        setCurrentClientId(null);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [clients]);
+
+  // Get all unique dates with available slots chronologically (Client view)
+  const availableDates = Array.from(new Set(
+    scheduleBlocks.filter(b => !b.isBooked).map(b => b.date)
+  )).sort((a, b) => a.localeCompare(b));
+
+  // Get all unique dates in trainer schedule (Trainer view)
+  const trainerUniqueDates = Array.from(new Set(
+    scheduleBlocks.map(b => b.date)
+  )).sort((a, b) => a.localeCompare(b));
+
+  // Auto-select first available client booking date
+  useEffect(() => {
+    if (!selectedClientBookingDate && availableDates.length > 0) {
+      setSelectedClientBookingDate(availableDates[0]);
+    } else if (selectedClientBookingDate && !availableDates.includes(selectedClientBookingDate)) {
+      setSelectedClientBookingDate(availableDates[0] || null);
+    }
+  }, [availableDates, selectedClientBookingDate]);
+
+  // Auto-select first available trainer calendar date
+  useEffect(() => {
+    if (!selectedTrainerCalendarDate && trainerUniqueDates.length > 0) {
+      setSelectedTrainerCalendarDate(trainerUniqueDates[0]);
+    } else if (selectedTrainerCalendarDate && !trainerUniqueDates.includes(selectedTrainerCalendarDate)) {
+      setSelectedTrainerCalendarDate(trainerUniqueDates[0] || null);
+    }
+  }, [trainerUniqueDates, selectedTrainerCalendarDate]);
 
   const activeInquiry = bookings.find(b => b.id === selectedInquiryId) || bookings[0];
   const activeClient = clients.find(c => c.id === selectedClientId) || clients[0];
@@ -135,7 +246,13 @@ export default function Portal({
     }
 
     try {
-      await signInWithEmailAndPassword(auth, emailInput, passwordInput);
+      const { error } = await supabase.auth.signInWithPassword({
+        email: emailInput,
+        password: passwordInput
+      });
+      if (error) {
+        setLoginError(error.message);
+      }
     } catch (err: any) {
       setLoginError('Invalid email or password. Please try again.');
       console.error(err);
@@ -144,7 +261,7 @@ export default function Portal({
 
   const handleLogout = async () => {
     try {
-      await signOut(auth);
+      await supabase.auth.signOut();
       setEmailInput('');
       setPasswordInput('');
     } catch (err) {
@@ -153,12 +270,17 @@ export default function Portal({
   };
 
   // Client registration submit
-  const handleCreateClientSubmit = (e: React.FormEvent) => {
+  const handleCreateClientSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setClientFormError('');
 
-    if (!newClientName || !newClientEmail || !newClientPhone) {
-      setClientFormError('Please complete all client information.');
+    if (!newClientName || !newClientEmail || !newClientPhone || !newClientPassword) {
+      setClientFormError('Please complete all client information including the password.');
+      return;
+    }
+
+    if (newClientPassword.length < 6) {
+      setClientFormError('Password must be at least 6 characters.');
       return;
     }
 
@@ -167,33 +289,41 @@ export default function Portal({
       return;
     }
 
-    const newProfile: ClientProfile = {
-      id: `client-${Date.now()}`,
-      name: newClientName,
-      email: newClientEmail,
-      phone: newClientPhone,
-      username: newClientEmail.split('@')[0], // Generate simple username from email
-      sessionsPaid: Number(newClientPaid),
-      sessionsDone: 0,
-      sessionsRemaining: Number(newClientPaid),
-      notes: 'New account created by trainer. (Make sure to create corresponding Firebase Auth user)'
-    };
+    try {
+      // 1. Create client login credentials in Supabase Auth
+      await signUpNewClient(newClientEmail, newClientPassword);
 
-    onAddClient(newProfile);
-    setSelectedClientId(newProfile.id);
-    setIsCreatingClient(false);
+      // 2. Save client details in database table
+      const newProfile: ClientProfile = {
+        id: `client-${Date.now()}`,
+        name: newClientName,
+        email: newClientEmail,
+        phone: newClientPhone,
+        username: newClientEmail.split('@')[0], // Generate simple username from email
+        sessionsPaid: Number(newClientPaid),
+        sessionsDone: 0,
+        sessionsRemaining: Number(newClientPaid),
+        notes: `New account created by trainer. (Initial Password: ${newClientPassword})`
+      };
 
-    // Clear client form
-    setNewClientName('');
-    setNewClientEmail('');
-    setNewClientPhone('');
-    setNewClientUsername('');
-    setNewClientPassword('password123');
-    setNewClientPaid(12);
+      await onAddClient(newProfile);
+      setSelectedClientId(newProfile.id);
+      setIsCreatingClient(false);
+
+      // Clear client form
+      setNewClientName('');
+      setNewClientEmail('');
+      setNewClientPhone('');
+      setNewClientUsername('');
+      setNewClientPassword('password123');
+      setNewClientPaid(12);
+    } catch (err: any) {
+      setClientFormError(err.message || 'Failed to create client login account in Auth.');
+    }
   };
 
   // Add Free Schedule block
-  const handleCreateScheduleBlock = (e: React.FormEvent) => {
+  const handleCreateScheduleBlock = async (e: React.FormEvent) => {
     e.preventDefault();
     setScheduleError('');
 
@@ -202,16 +332,137 @@ export default function Portal({
       return;
     }
 
-    const newBlock: FreeScheduleBlock = {
-      id: `block-${Date.now()}`,
-      date: newBlockDate,
-      startTime: newBlockStart,
-      endTime: newBlockEnd,
-      isBooked: false
+    const startMin = parseTimeToMinutes(newBlockStart);
+    const endMin = parseTimeToMinutes(newBlockEnd);
+
+    if (startMin >= endMin) {
+      setScheduleError('Start Time must be before End Time.');
+      return;
+    }
+
+    // Split the window into 1.5-hour (90 minutes) increments
+    // (Each increment starts every hour and a half, containing 45 mins session + travel buffer)
+    const blocksToPublish: FreeScheduleBlock[] = [];
+    let currentMin = startMin;
+    
+    while (currentMin + 45 <= endMin) {
+      const blockStart = formatMinutesToTime(currentMin);
+      const blockEnd = formatMinutesToTime(Math.min(currentMin + 90, endMin));
+      
+      blocksToPublish.push({
+        id: `block-${Date.now()}-${currentMin}`,
+        date: newBlockDate,
+        startTime: blockStart,
+        endTime: blockEnd,
+        isBooked: false
+      });
+      
+      currentMin += 90; // 1.5 hours step
+    }
+
+    if (blocksToPublish.length === 0) {
+      setScheduleError('Time window must be at least 45 minutes long.');
+      return;
+    }
+
+    try {
+      for (const block of blocksToPublish) {
+        await onAddScheduleBlock(block);
+      }
+      setNewBlockDate('');
+      alert(`Successfully published ${blocksToPublish.length} availability slots for ${newBlockDate}!`);
+    } catch (err: any) {
+      setScheduleError(err.message || 'Failed to publish availability blocks.');
+    }
+  };
+
+  // ==========================================
+  // Completed Sessions Management Handlers
+  // ==========================================
+
+  const handleLogSessionSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLogSessionError('');
+
+    if (!activeClient) return;
+
+    if (!logSessionDate || !logSessionStart || !logSessionEnd) {
+      setLogSessionError('Please provide Date, Start Time, and End Time.');
+      return;
+    }
+
+    const session: CompletedSession = {
+      id: `sess-${Date.now()}`,
+      clientId: activeClient.id,
+      clientName: activeClient.name,
+      date: logSessionDate,
+      timeSlot: `${logSessionStart} - ${logSessionEnd}`,
+      privateNotes: logPrivateNotes,
+      sharedNotes: logSharedNotes,
+      completedAt: new Date().toISOString()
     };
 
-    onAddScheduleBlock(newBlock);
-    setNewBlockDate('');
+    try {
+      await onAddCompletedSession(session);
+      // Deduct session balance
+      const updatedPaid = activeClient.sessionsPaid;
+      const updatedDone = activeClient.sessionsDone + 1;
+      onUpdateClientSessions(activeClient.id, updatedPaid, updatedDone);
+
+      // Reset states
+      setIsLoggingSession(false);
+      setLogPrivateNotes('');
+      setLogSharedNotes('');
+    } catch (err: any) {
+      setLogSessionError(err.message || 'Failed to log completed session.');
+    }
+  };
+
+  const handleSaveSessionNotes = async (id: string) => {
+    setSessionNotesError('');
+    try {
+      await onUpdateCompletedSessionNotes(id, editPrivateNotes, editSharedNotes);
+      setEditingSessionId(null);
+    } catch (err: any) {
+      setSessionNotesError(err.message || 'Failed to save session notes.');
+    }
+  };
+
+  const handleTrainerMarkBlockCompleted = async (block: FreeScheduleBlock) => {
+    if (!block.bookedByClientId || !block.bookedByClientName) return;
+
+    const confirmComplete = window.confirm(
+      `Are you sure you want to mark the session with ${block.bookedByClientName} on ${block.date} as completed? This will deduct 1 session from their package and log it in their history.`
+    );
+    if (!confirmComplete) return;
+
+    const matchingClient = clients.find(c => c.id === block.bookedByClientId);
+    
+    const session: CompletedSession = {
+      id: `sess-${Date.now()}`,
+      clientId: block.bookedByClientId,
+      clientName: block.bookedByClientName,
+      date: block.date,
+      timeSlot: `${block.startTime} - ${get45MinEndTime(block.startTime)}`,
+      privateNotes: 'Completed from scheduled appointment.',
+      sharedNotes: 'Great session today!',
+      completedAt: new Date().toISOString()
+    };
+
+    try {
+      await onAddCompletedSession(session);
+
+      if (matchingClient) {
+        const updatedPaid = matchingClient.sessionsPaid;
+        const updatedDone = matchingClient.sessionsDone + 1;
+        onUpdateClientSessions(matchingClient.id, updatedPaid, updatedDone);
+      }
+
+      onDeleteScheduleBlock(block.id);
+      alert(`Session successfully completed and archived. You can edit notes under ${block.bookedByClientName}'s profile.`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to complete session block.');
+    }
   };
 
   // Client books a slot
@@ -282,19 +533,19 @@ export default function Portal({
           <div>
             <div className="flex items-center gap-2">
               <span className="p-1 px-2.5 bg-[#C0392B] text-[#FDFCFB] font-mono text-[9px] uppercase font-bold tracking-widest leading-none">
-                LIB FITNESS INTERACTIVE PORTAL
+                HANOCH LIB PT PORTAL
               </span>
               <Settings className="w-3.5 h-3.5 text-[#7F8C8D] rotate-45 animate-spin-slow" />
             </div>
             <h2 className="text-2xl sm:text-3xl font-serif text-[#2C3E50] tracking-tight mt-1">
-              {userRole === 'admin' && 'Trainer Control panel'}
+              {userRole === 'admin' && 'Trainer Dashboard'}
               {userRole === 'client' && `Welcome Back, ${loggedInClientProfile?.name}`}
               {userRole === 'none' && 'Client & Trainer Portal'}
             </h2>
             <p className="text-[#5D6D7E] text-xs mt-1 leading-normal">
-              {userRole === 'admin' && 'Manage registered active clients, customize schedule blocks, and organize phone consults.'}
-              {userRole === 'client' && 'Check your remaining sessions, view progressive workout logs, and reserve active consultation slots.'}
-              {userRole === 'none' && 'Access your private personal training account to schedule free hours and track metrics.'}
+              {userRole === 'admin' && 'Monitor active client rosters, publish scheduling blocks, and coordinate consultation inquiries.'}
+              {userRole === 'client' && 'Track your package balances, view shared workout progress notes, and schedule open training sessions.'}
+              {userRole === 'none' && 'Log in to view available time slots, track your personal training history, and access progress notes.'}
             </p>
           </div>
 
@@ -328,7 +579,7 @@ export default function Portal({
               </div>
               <h3 className="text-xl font-serif text-[#2C3E50]">Sign In to Your Account</h3>
               <p className="text-stone-400 text-xs leading-relaxed">
-                Enter the credentials provided by Hanoch Lib to access your client card and schedule calendar.
+                Please sign in using the login details provided to you to view your training logs and calendar.
               </p>
             </div>
 
@@ -372,9 +623,7 @@ export default function Portal({
 
             <div className="mt-6 pt-5 border-t border-[#E5E2DE] space-y-3">
               <p className="text-[10px] text-stone-400 italic text-center mt-2 leading-relaxed">
-                Log in with the credentials created in the Firebase Authentication console. 
-                If your email matches an existing client profile, you will log in as that client.
-                Otherwise, you will log in as an administrator/trainer.
+                Log in using your secure portal account credentials. Clients can log in using the email and password provided by Hanoch, while administrators can access CRM control tools using trainer credentials.
               </p>
             </div>
           </div>
@@ -396,11 +645,11 @@ export default function Portal({
                     <Award className="w-5 h-5 text-[#D4AF37]" />
                   </div>
                   <h4 className="font-serif italic text-lg text-[#2C3E50]">Remaining Sessions</h4>
-                  <p className="text-xs text-[#7F8C8D]">Sessions available to book right now.</p>
+                  <p className="text-xs text-[#7F8C8D]">Available sessions in your current package.</p>
                 </div>
                 <div className="mt-6 flex items-baseline gap-2">
                   <span className="text-5xl font-serif font-black text-[#2C3E50]">{loggedInClientProfile.sessionsRemaining}</span>
-                  <span className="text-stone-400 text-sm">/ {loggedInClientProfile.sessionsPaid} total paid</span>
+                  <span className="text-stone-400 text-sm">/ {loggedInClientProfile.sessionsPaid} total purchased</span>
                 </div>
                 <div className="mt-4 w-full bg-stone-100 h-2 rounded-full overflow-hidden">
                   <div 
@@ -417,7 +666,7 @@ export default function Portal({
                     <CheckCircle className="w-5 h-5 text-emerald-700" />
                   </div>
                   <h4 className="font-serif italic text-lg text-[#2C3E50]">Completed Sessions</h4>
-                  <p className="text-xs text-[#7F8C8D]">Workouts completed or reserved so far.</p>
+                  <p className="text-xs text-[#7F8C8D]">Workouts successfully completed.</p>
                 </div>
                 <div className="mt-6">
                   <span className="text-5xl font-serif font-black text-[#2C3E50]">{loggedInClientProfile.sessionsDone}</span>
@@ -430,14 +679,14 @@ export default function Portal({
                 <div className="space-y-3">
                   <h4 className="font-sans text-[10px] text-[#7F8C8D] uppercase font-bold tracking-widest flex items-center gap-1.5">
                     <ShieldCheck className="w-3.5 h-3.5 text-[#C0392B]" />
-                    <span>Personal Posture & Progress Logs</span>
+                    <span>Coach's Notes & Assessment Logs</span>
                   </h4>
                   <div className="text-xs text-[#5D6D7E] leading-relaxed whitespace-pre-wrap max-h-[140px] overflow-y-auto italic">
-                    {loggedInClientProfile.notes ? `"${loggedInClientProfile.notes}"` : 'No logs written yet. Hanoch will update your balance and movement notes here as your sessions progress!'}
+                    {loggedInClientProfile.notes ? `"${loggedInClientProfile.notes}"` : 'No custom notes posted yet. Progress notes, alignment details, and posture metrics will be updated by Hanoch as your training sessions progress.'}
                   </div>
                 </div>
                 <div className="text-[9px] text-[#7F8C8D] uppercase tracking-wider font-mono font-bold mt-4">
-                  Only visible to you and Hanoch
+                  Private client-coach communication log
                 </div>
               </div>
             </div>
@@ -448,44 +697,84 @@ export default function Portal({
               {/* LEFT: Book Free Slot */}
               <div className="lg:col-span-7 bg-white border border-[#E5E2DE] p-6 sm:p-8 rounded-sm shadow-xs">
                 <div className="border-b border-[#E5E2DE] pb-4 mb-6">
-                  <h3 className="font-serif text-xl text-[#2C3E50] italic">Reserve Your Time Slot</h3>
+                  <h3 className="font-serif text-xl text-[#2C3E50] italic">Book a Session</h3>
                   <p className="text-stone-400 text-xs mt-1">
-                    Select one of Hanoch's free schedule blocks below. Your session lasts <strong>45 minutes</strong> (commencing at the block's start time), while Hanoch blocks off the rest of the time window for travel and preparation!
+                    Select an available time slot below to schedule your next session. Each appointment is structured as a 45-minute workout. A 45-minute travel buffer is automatically scheduled afterwards to ensure on-time arrival at every client's home.
                   </p>
                 </div>
 
+                {/* Horizontal Date Picker Strip */}
+                {availableDates.length > 0 && (
+                  <div className="mb-6 border-b border-[#F5F5F0] pb-4">
+                    <span className="block text-[9px] font-bold text-[#7F8C8D] uppercase tracking-wider mb-2.5">Select Date of Session</span>
+                    <div className="flex gap-2.5 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-stone-200">
+                      {availableDates.map((date) => {
+                        const { weekday, day, month } = formatDateForStrip(date);
+                        const isSelected = selectedClientBookingDate === date;
+                        return (
+                          <button
+                            key={date}
+                            type="button"
+                            onClick={() => setSelectedClientBookingDate(date)}
+                            className={`min-w-[65px] h-[75px] rounded-sm border p-2 flex flex-col justify-between items-center transition cursor-pointer shrink-0 select-none ${
+                              isSelected
+                                ? 'bg-[#C0392B] border-[#C0392B] text-white shadow-xs'
+                                : 'bg-[#FDFCFB] border-[#E5E2DE] text-[#2C3E50] hover:bg-stone-50'
+                            }`}
+                          >
+                            <span className={`text-[8px] uppercase tracking-wider font-bold block ${isSelected ? 'text-white/80' : 'text-[#7F8C8D]'}`}>
+                              {weekday}
+                            </span>
+                            <span className="text-xl font-serif font-black block leading-none py-0.5">
+                              {day}
+                            </span>
+                            <span className={`text-[8px] uppercase tracking-wider font-bold block ${isSelected ? 'text-white/80' : 'text-[#7F8C8D]'}`}>
+                              {month}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="space-y-4">
-                  {scheduleBlocks.filter(b => !b.isBooked).length === 0 ? (
+                  {availableDates.length === 0 ? (
                     <div className="p-8 text-center bg-[#FDFCFB] border border-dashed border-[#E5E2DE] rounded-sm text-stone-400 text-xs">
                       No free scheduling times available at the moment. Please reach out to Hanoch or check back later!
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 gap-3">
-                      {scheduleBlocks.filter(b => !b.isBooked).map((block) => (
-                        <div 
-                          key={block.id} 
-                          className="bg-[#FDFCFB] border border-[#E5E2DE] p-4 rounded-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-xs transition"
-                        >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1.5">
-                              <Calendar className="w-3.5 h-3.5 text-[#C0392B]" />
-                              <span className="text-xs font-bold text-[#2C3E50]">{block.date}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-xs text-stone-500">
-                              <Clock className="w-3.5 h-3.5 text-amber-600" />
-                              <span>Your Session Slot: <strong>{block.startTime} - {get45MinEndTime(block.startTime)}</strong></span>
-                              <span className="text-[10px] text-stone-400 italic font-normal ml-1">({block.startTime} - {block.endTime} reserved for Hanoch)</span>
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => handleClientBookSlot(block)}
-                            className="bg-[#C0392B] hover:bg-[#A93226] text-white text-[10px] font-bold uppercase tracking-widest px-4 py-2.5 rounded-sm transition cursor-pointer"
-                          >
-                            Reserve Slot
-                          </button>
+                    <div className="space-y-3">
+                      {scheduleBlocks.filter(b => !b.isBooked && b.date === selectedClientBookingDate).length === 0 ? (
+                        <div className="p-8 text-center bg-[#FDFCFB] border border-dashed border-[#E5E2DE] rounded-sm text-stone-400 text-xs italic">
+                          No available training sessions left on this day. Please pick another date above!
                         </div>
-                      ))}
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {scheduleBlocks.filter(b => !b.isBooked && b.date === selectedClientBookingDate).map((block) => (
+                            <div 
+                              key={block.id} 
+                              className="bg-[#FDFCFB] border border-[#E5E2DE] p-4 rounded-sm flex flex-col justify-between items-start gap-4 hover:shadow-xs transition"
+                            >
+                              <div className="space-y-1 text-left">
+                                <div className="flex items-center gap-1.5 text-xs text-stone-600">
+                                  <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Workout: <strong>{block.startTime} - {get45MinEndTime(block.startTime)}</strong></span>
+                                </div>
+                                <span className="text-[10px] text-stone-400 italic block">({block.startTime} - {block.endTime} slot reserved for Hanoch)</span>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => handleClientBookSlot(block)}
+                                className="w-full bg-[#C0392B] hover:bg-[#A93226] text-white text-[9px] font-bold uppercase tracking-widest py-2 rounded-sm transition cursor-pointer"
+                              >
+                                Reserve Slot
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -509,7 +798,7 @@ export default function Portal({
                         {scheduleBlocks.filter(b => b.isBooked && b.bookedByClientId === loggedInClientProfile.id).map((block) => (
                           <div key={block.id} className="bg-emerald-50/50 border border-emerald-100 p-3 rounded-sm text-xs">
                             <div className="flex items-center justify-between font-bold text-emerald-800 mb-1">
-                              <span>45-Min Call Session</span>
+                              <span>45-Min Training Session</span>
                               <span className="text-[9px] uppercase tracking-widest bg-emerald-100 px-1.5 py-0.5 rounded-sm">Confirmed</span>
                             </div>
                             <div className="text-stone-600 space-y-0.5">
@@ -528,6 +817,49 @@ export default function Portal({
                 </div>
               </div>
 
+            </div>
+
+            {/* 3. My Completed Workouts & Session History */}
+            <div className="bg-white border border-[#E5E2DE] p-6 sm:p-8 rounded-sm shadow-xs mt-6 text-left">
+              <div className="border-b border-[#E5E2DE] pb-4 mb-6">
+                <h3 className="font-serif text-xl text-[#2C3E50] italic flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                  My Completed Workouts & Session History
+                </h3>
+                <p className="text-stone-400 text-xs mt-1">
+                  Review notes and homework left by Hanoch for your past training sessions.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {completedSessions.filter(s => s.clientId === loggedInClientProfile.id).length === 0 ? (
+                  <div className="p-8 text-center bg-[#FDFCFB] border border-dashed border-[#E5E2DE] rounded-sm text-stone-400 text-xs italic">
+                    No completed sessions recorded in your history yet. Workout summaries and trainer recommendations will be posted here after your sessions.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {completedSessions.filter(s => s.clientId === loggedInClientProfile.id).map((session) => (
+                      <div key={session.id} className="bg-[#FDFCFB] border border-[#E5E2DE] p-4 rounded-sm space-y-3">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-[#2C3E50] border-b border-[#F5F5F0] pb-2">
+                          <Calendar className="w-3.5 h-3.5 text-[#C0392B]" />
+                          <span>{session.date}</span>
+                          <span className="text-stone-300">•</span>
+                          <Clock className="w-3.5 h-3.5 text-amber-600" />
+                          <span>{session.timeSlot}</span>
+                          <span className="ml-auto text-[9px] uppercase tracking-widest bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm">Completed</span>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-emerald-800 uppercase tracking-wider block">Trainer Notes & Recommendations</span>
+                          <p className="text-xs text-stone-600 leading-relaxed whitespace-pre-wrap italic bg-white p-2.5 rounded-sm border border-stone-100">
+                            {session.sharedNotes || 'No notes shared for this session.'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
           </div>
@@ -563,7 +895,7 @@ export default function Portal({
               </div>
 
               <div className="text-xs text-stone-500 font-mono flex gap-4">
-                <span>Leads Pending: <strong className="text-[#C0392B]">{pendingLeads}</strong></span>
+                <span>Inquiries Pending: <strong className="text-[#C0392B]">{pendingLeads}</strong></span>
                 <span>•</span>
                 <span>Unbooked Slots: <strong className="text-[#D4AF37]">{totalFreeSlots}</strong></span>
               </div>
@@ -576,7 +908,7 @@ export default function Portal({
                 {/* Queue list */}
                 <div className="lg:col-span-5 bg-white border border-[#E5E2DE] rounded-sm overflow-hidden shadow-xs flex flex-col h-[550px]">
                   <div className="p-4 border-b border-[#E5E2DE] bg-[#FDFCFB] space-y-2.5">
-                    <h3 className="font-serif font-bold text-xs uppercase tracking-widest text-stone-500">Inbound Leads Queue ({filteredBookings.length})</h3>
+                    <h3 className="font-serif font-bold text-xs uppercase tracking-widest text-stone-500">Consultation Inquiries ({filteredBookings.length})</h3>
                     <div className="grid grid-cols-2 gap-2">
                       <select 
                         value={statusFilter}
@@ -604,7 +936,7 @@ export default function Portal({
                   <div className="flex-1 overflow-y-auto divide-y divide-[#F5F5F0]">
                     {filteredBookings.length === 0 ? (
                       <div className="p-10 text-center text-stone-400 text-xs italic">
-                        No lead inquiries found.
+                        No inquiries found.
                       </div>
                     ) : (
                       filteredBookings.map((bk) => (
@@ -643,9 +975,9 @@ export default function Portal({
                     <div className="space-y-5">
                       <div className="flex justify-between items-start border-b border-[#E5E2DE] pb-4">
                         <div>
-                          <span className="text-[9px] text-[#7F8C8D] uppercase font-bold tracking-widest block">Inbound Lead File</span>
+                          <span className="text-[9px] text-[#7F8C8D] uppercase font-bold tracking-widest block">Inquiry Details</span>
                           <h3 className="font-serif font-bold text-xl text-[#2C3E50]">{activeInquiry.clientName}</h3>
-                          <p className="text-[10px] text-stone-400">Created: {activeInquiry.createdTime}</p>
+                          <p className="text-[10px] text-stone-400">Received: {activeInquiry.createdTime}</p>
                         </div>
                         <div className="flex bg-[#F5F5F0] border border-[#E5E2DE] p-1 rounded-sm gap-1">
                           <button
@@ -724,7 +1056,7 @@ export default function Portal({
                           </div>
                         ) : (
                           <div className="bg-[#FDFCFB] border border-dashed border-[#D4AF37] p-3 rounded-sm text-xs text-stone-500 italic">
-                            {activeInquiry.trainerNotes || 'No notes saved for this lead yet.'}
+                            {activeInquiry.trainerNotes || 'No notes saved for this inquiry yet.'}
                           </div>
                         )}
                       </div>
@@ -733,14 +1065,14 @@ export default function Portal({
                         <span>ID: {activeInquiry.id}</span>
                         <button
                           onClick={() => {
-                            if (window.confirm('Delete lead inquiry?')) {
+                            if (window.confirm('Permanently delete this inquiry?')) {
                               onDeleteBooking(activeInquiry.id);
                               setSelectedInquiryId(null);
                             }
                           }}
                           className="text-[#C0392B] hover:underline"
                         >
-                          Delete Lead Permanent
+                          Delete Inquiry
                         </button>
                       </div>
 
@@ -762,7 +1094,7 @@ export default function Portal({
                 {/* Client List */}
                 <div className="lg:col-span-5 bg-white border border-[#E5E2DE] rounded-sm overflow-hidden shadow-xs flex flex-col h-[550px]">
                   <div className="p-4 border-b border-[#E5E2DE] bg-[#FDFCFB] flex justify-between items-center">
-                    <h3 className="font-serif font-bold text-xs uppercase tracking-widest text-stone-500">Active Registered Clients ({clients.length})</h3>
+                    <h3 className="font-serif font-bold text-xs uppercase tracking-widest text-stone-500">Client Roster ({clients.length})</h3>
                     <button
                       onClick={() => setIsCreatingClient(true)}
                       className="bg-[#C0392B] hover:bg-[#A93226] text-white text-[9px] font-bold uppercase tracking-widest px-2.5 py-1.5 rounded-sm flex items-center gap-1 cursor-pointer"
@@ -807,8 +1139,8 @@ export default function Portal({
                   {isCreatingClient ? (
                     <form onSubmit={handleCreateClientSubmit} className="space-y-4">
                       <div className="border-b border-[#E5E2DE] pb-2">
-                        <h4 className="font-serif text-lg text-[#2C3E50]">Create Client Account</h4>
-                        <p className="text-stone-400 text-xs">Register a client so they can login and book free hours themselves.</p>
+                        <h4 className="font-serif text-lg text-[#2C3E50]">Register New Client</h4>
+                        <p className="text-stone-400 text-xs">Register a new client profile. This automatically configures their login credentials so they can access their progress tracking dashboard and schedule training sessions directly.</p>
                       </div>
 
                       {clientFormError && (
@@ -862,9 +1194,23 @@ export default function Portal({
                         </div>
                       </div>
 
-                      <div className="bg-[#F5F5F0] p-4 rounded-sm border border-[#E5E2DE]">
-                        <p className="text-[10px] text-stone-500 italic">
-                          <strong>Note:</strong> To allow this client to log in, you must also create a user in the Firebase Authentication console using the exact same email address.
+                      <div className="grid grid-cols-1 text-xs">
+                        <div className="space-y-1">
+                          <label className="block text-[9px] font-bold uppercase text-[#7F8C8D]">Initial Password (Min 6 chars)</label>
+                          <input 
+                            type="password" 
+                            value={newClientPassword}
+                            onChange={(e) => setNewClientPassword(e.target.value)}
+                            className="w-full bg-[#FDFCFB] border border-[#E5E2DE] p-2 text-sm rounded-sm"
+                            placeholder="password123"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-emerald-50/50 p-4 rounded-sm border border-emerald-200">
+                        <p className="text-[10px] text-emerald-800 leading-relaxed">
+                          <strong>Note:</strong> Creating this account will register the client credentials in Supabase Auth automatically. The client can log in to their dashboard immediately.
                         </p>
                       </div>
 
@@ -887,18 +1233,18 @@ export default function Portal({
                   ) : activeClient ? (
                     <div className="space-y-5">
                       <div className="border-b border-[#E5E2DE] pb-4">
-                        <span className="text-[9px] text-[#7F8C8D] uppercase font-bold tracking-widest block">Client Profile Account</span>
+                        <span className="text-[9px] text-[#7F8C8D] uppercase font-bold tracking-widest block">Client Account Profile</span>
                         <h3 className="font-serif font-bold text-xl text-[#2C3E50]">{activeClient.name}</h3>
-                        <p className="text-[10px] text-stone-400">Username credentials: <code className="bg-stone-100 px-1 font-mono font-bold text-[#2C3E50]">{activeClient.username}</code> / password: <code className="bg-stone-100 px-1 font-mono font-bold text-[#2C3E50]">{activeClient.password || 'password123'}</code></p>
+                        <p className="text-[10px] text-stone-400">Login Email: <code className="bg-stone-100 px-1 font-mono font-bold text-[#2C3E50]">{activeClient.username}</code> / Password: <code className="bg-stone-100 px-1 font-mono font-bold text-[#2C3E50]">{activeClient.password || 'password123'}</code></p>
                       </div>
 
                       {/* Sessions Bank Adjuster */}
                       <div className="bg-[#F5F5F0] p-4 rounded-sm border border-[#E5E2DE] space-y-4">
-                        <h4 className="font-serif italic text-sm text-[#2C3E50] border-b border-[#E5E2DE] pb-1.5">Session Package Ledger</h4>
+                        <h4 className="font-serif italic text-sm text-[#2C3E50] border-b border-[#E5E2DE] pb-1.5">Training Session Balance</h4>
                         
                         <div className="grid grid-cols-3 gap-4 text-center">
                           <div className="bg-white p-2 border border-[#E5E2DE] rounded-sm">
-                            <span className="text-[9px] text-[#7F8C8D] uppercase font-bold block mb-1">Sessions Paid</span>
+                            <span className="text-[9px] text-[#7F8C8D] uppercase font-bold block mb-1">Total Purchased</span>
                             <div className="flex items-center justify-center gap-1.5">
                               <button 
                                 onClick={() => onUpdateClientSessions(activeClient.id, activeClient.sessionsPaid - 1, activeClient.sessionsDone)}
@@ -917,7 +1263,7 @@ export default function Portal({
                           </div>
 
                           <div className="bg-white p-2 border border-[#E5E2DE] rounded-sm">
-                            <span className="text-[9px] text-[#7F8C8D] uppercase font-bold block mb-1">Sessions Used</span>
+                            <span className="text-[9px] text-[#7F8C8D] uppercase font-bold block mb-1">Total Completed</span>
                             <div className="flex items-center justify-center gap-1.5">
                               <button 
                                 onClick={() => onUpdateClientSessions(activeClient.id, activeClient.sessionsPaid, activeClient.sessionsDone - 1)}
@@ -957,7 +1303,7 @@ export default function Portal({
                       {/* Trainer progressive assessment notes */}
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-[9px] text-[#7F8C8D] uppercase font-bold tracking-wider">Trainer Bio & Progression Log</span>
+                          <span className="text-[9px] text-[#7F8C8D] uppercase font-bold tracking-wider">Client Assessment & Progress Log</span>
                           <button
                             onClick={() => {
                               setIsEditingClientNotes(!isEditingClientNotes);
@@ -976,7 +1322,7 @@ export default function Portal({
                               onChange={(e) => setClientNotesDraft(e.target.value)}
                               rows={4}
                               className="w-full bg-[#FDFCFB] border border-[#E5E2DE] p-3 text-xs rounded-sm focus:outline-none"
-                              placeholder="Write progressive bio, hip stability comments, or balance limits..."
+                              placeholder="Enter initial posture assessments, safety instructions, or movement limits..."
                             />
                             <button
                               onClick={() => {
@@ -991,6 +1337,227 @@ export default function Portal({
                         ) : (
                           <div className="bg-[#FDFCFB] border border-dashed border-[#D4AF37] p-4 rounded-sm text-xs text-stone-500 whitespace-pre-wrap leading-relaxed italic">
                             {activeClient.notes || 'No progression bio saved yet for this client.'}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Completed Sessions Timeline */}
+                      <div className="pt-4 border-t border-[#E5E2DE] space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] text-[#2C3E50] uppercase font-bold tracking-wider flex items-center gap-1.5">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                            Completed Sessions History ({completedSessions.filter(s => s.clientId === activeClient.id).length})
+                          </span>
+                          <button
+                            onClick={() => {
+                              setIsLoggingSession(!isLoggingSession);
+                              setLogSessionError('');
+                            }}
+                            className="bg-[#C0392B] hover:bg-[#A93226] text-white text-[9px] font-bold uppercase tracking-widest px-2 py-1 rounded-sm flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-2.5 h-2.5" />
+                            {isLoggingSession ? 'Cancel' : 'Log Session'}
+                          </button>
+                        </div>
+
+                        {isLoggingSession ? (
+                          <form onSubmit={handleLogSessionSubmit} className="bg-[#F5F5F0] p-4 rounded-sm border border-[#E5E2DE] space-y-3 text-xs text-left">
+                            <h5 className="font-serif italic font-bold text-stone-700 text-xs">Log Completed Training Session</h5>
+                            
+                            {logSessionError && (
+                              <div className="p-2 bg-red-50 border border-red-100 text-[#C0392B] text-[10px] rounded-sm">
+                                {logSessionError}
+                              </div>
+                            )}
+
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="space-y-1">
+                                <label className="block text-[8px] font-bold text-stone-500 uppercase">Date</label>
+                                <input 
+                                  type="date"
+                                  value={logSessionDate}
+                                  onChange={(e) => setLogSessionDate(e.target.value)}
+                                  className="w-full bg-white border border-[#E5E2DE] p-1.5 text-[11px] rounded-sm"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[8px] font-bold text-stone-500 uppercase">Start Time</label>
+                                <select 
+                                  value={logSessionStart}
+                                  onChange={(e) => setLogSessionStart(e.target.value)}
+                                  className="w-full bg-white border border-[#E5E2DE] p-1 text-[11px] rounded-sm"
+                                >
+                                  {['07:00 AM', '08:00 AM', '09:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '01:00 PM', '02:00 PM', '03:00 PM', '04:00 PM', '05:00 PM', '06:00 PM'].map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <label className="block text-[8px] font-bold text-stone-500 uppercase">End Time</label>
+                                <select 
+                                  value={logSessionEnd}
+                                  onChange={(e) => setLogSessionEnd(e.target.value)}
+                                  className="w-full bg-white border border-[#E5E2DE] p-1 text-[11px] rounded-sm"
+                                >
+                                  {['07:45 AM', '08:45 AM', '09:45 AM', '10:45 AM', '11:45 AM', '12:45 PM', '01:45 PM', '02:45 PM', '03:45 PM', '04:45 PM', '05:45 PM', '06:45 PM', '07:45 PM'].map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="block text-[8px] font-bold text-[#C0392B] uppercase tracking-wider flex items-center gap-1">
+                                <ShieldCheck className="w-2.5 h-2.5 text-[#C0392B]" />
+                                Private Notes (Internal Coach Review Only)
+                              </label>
+                              <textarea
+                                value={logPrivateNotes}
+                                onChange={(e) => setLogPrivateNotes(e.target.value)}
+                                rows={2}
+                                className="w-full bg-white border border-[#E5E2DE] p-2 text-[11px] rounded-sm focus:outline-none"
+                                placeholder="Assess bio-mechanics, single leg balances, core limitations..."
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="block text-[8px] font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1">
+                                <User className="w-2.5 h-2.5 text-emerald-700" />
+                                Shared Progress Notes (Visible to Client)
+                              </label>
+                              <textarea
+                                value={logSharedNotes}
+                                onChange={(e) => setLogSharedNotes(e.target.value)}
+                                rows={2}
+                                className="w-full bg-white border border-[#E5E2DE] p-2 text-[11px] rounded-sm focus:outline-none"
+                                placeholder="Provide home suggestions: posture checks, specific stability stretches, hydration goals..."
+                              />
+                            </div>
+
+                            <div className="flex gap-2 justify-end pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setIsLoggingSession(false)}
+                                className="bg-stone-200 hover:bg-stone-300 text-stone-700 px-3 py-1.5 rounded-sm uppercase font-bold text-[9px] cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="submit"
+                                className="bg-[#C0392B] hover:bg-[#A93226] text-white px-4 py-1.5 rounded-sm uppercase font-bold text-[9px] cursor-pointer"
+                              >
+                                Submit Log
+                              </button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="space-y-2">
+                            {completedSessions.filter(s => s.clientId === activeClient.id).length === 0 ? (
+                              <div className="p-6 text-center bg-[#FDFCFB] border border-dashed border-[#E5E2DE] rounded-sm text-stone-400 text-xs italic">
+                                No completed sessions logged yet for this client.
+                              </div>
+                            ) : (
+                              completedSessions.filter(s => s.clientId === activeClient.id).map((session) => (
+                                <div key={session.id} className="p-3 bg-[#FDFCFB] border border-[#E5E2DE] rounded-sm space-y-2 text-xs text-left">
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#2C3E50]">
+                                      <Calendar className="w-3.5 h-3.5 text-[#C0392B]" />
+                                      <span>{session.date}</span>
+                                      <span className="text-stone-300">•</span>
+                                      <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                      <span>{session.timeSlot}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => {
+                                          if (editingSessionId === session.id) {
+                                            setEditingSessionId(null);
+                                          } else {
+                                            setEditingSessionId(session.id);
+                                            setEditPrivateNotes(session.privateNotes || '');
+                                            setEditSharedNotes(session.sharedNotes || '');
+                                            setSessionNotesError('');
+                                          }
+                                        }}
+                                        className="text-stone-500 hover:text-stone-700 text-[10px] font-semibold cursor-pointer"
+                                      >
+                                        {editingSessionId === session.id ? 'Cancel' : 'Edit Notes'}
+                                      </button>
+                                      <span className="text-stone-300">|</span>
+                                      <button
+                                        onClick={() => {
+                                          if (window.confirm("Are you sure you want to delete this completed session record? Note: This action does not automatically refund the client's session balance.")) {
+                                            onDeleteCompletedSession(session.id);
+                                          }
+                                        }}
+                                        className="text-[#C0392B] hover:text-[#A93226] text-[10px] font-semibold cursor-pointer"
+                                      >
+                                        Delete
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {sessionNotesError && editingSessionId === session.id && (
+                                    <div className="p-2 bg-red-50 text-[#C0392B] text-[10px] rounded-sm">
+                                      {sessionNotesError}
+                                    </div>
+                                  )}
+
+                                  {editingSessionId === session.id ? (
+                                    <div className="space-y-2 bg-[#F5F5F0] p-3 rounded-sm border border-[#E5E2DE] mt-1">
+                                      <div className="space-y-1">
+                                        <label className="block text-[8px] font-bold text-[#C0392B] uppercase">Private Note (Trainer Eyes Only)</label>
+                                        <textarea
+                                          value={editPrivateNotes}
+                                          onChange={(e) => setEditPrivateNotes(e.target.value)}
+                                          rows={2}
+                                          className="w-full bg-white border border-[#E5E2DE] p-1.5 text-[11px] rounded-sm focus:outline-none"
+                                        />
+                                      </div>
+                                      <div className="space-y-1">
+                                        <label className="block text-[8px] font-bold text-emerald-800 uppercase">Shared Note (Visible to Client)</label>
+                                        <textarea
+                                          value={editSharedNotes}
+                                          onChange={(e) => setEditSharedNotes(e.target.value)}
+                                          rows={2}
+                                          className="w-full bg-white border border-[#E5E2DE] p-1.5 text-[11px] rounded-sm focus:outline-none"
+                                        />
+                                      </div>
+                                      <div className="flex justify-end pt-1">
+                                        <button
+                                          onClick={() => handleSaveSessionNotes(session.id)}
+                                          className="bg-[#C0392B] hover:bg-[#A93226] text-white text-[9px] uppercase font-bold px-3 py-1 rounded-sm cursor-pointer"
+                                        >
+                                          Save Notes
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-1 pt-1 border-t border-[#F5F5F0]">
+                                      <div className="bg-[#FDFCFB] p-2 rounded-sm border border-stone-100 text-left">
+                                        <div className="flex items-center gap-1 text-[9px] text-[#C0392B] font-bold uppercase tracking-wider mb-1">
+                                          <ShieldCheck className="w-3 h-3 text-[#C0392B]" />
+                                          <span>Trainer Notes (Private)</span>
+                                        </div>
+                                        <p className="text-[11px] text-stone-600 leading-relaxed whitespace-pre-wrap italic">
+                                          {session.privateNotes || 'No private training notes logged.'}
+                                        </p>
+                                      </div>
+                                      <div className="bg-[#FDFCFB] p-2 rounded-sm border border-emerald-100 text-left">
+                                        <div className="flex items-center gap-1 text-[9px] text-emerald-800 font-bold uppercase tracking-wider mb-1">
+                                          <User className="w-3 h-3 text-emerald-700" />
+                                          <span>Shared Workout Notes</span>
+                                        </div>
+                                        <p className="text-[11px] text-stone-600 leading-relaxed whitespace-pre-wrap italic">
+                                          {session.sharedNotes || 'No homework/notes shared with client.'}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            )}
                           </div>
                         )}
                       </div>
@@ -1030,9 +1597,9 @@ export default function Portal({
                 <div className="lg:col-span-5 bg-white border border-[#E5E2DE] p-6 rounded-sm shadow-xs h-[550px] flex flex-col justify-between">
                   <form onSubmit={handleCreateScheduleBlock} className="space-y-4">
                     <div className="border-b border-[#E5E2DE] pb-2">
-                      <h4 className="font-serif text-lg text-[#2C3E50]">Add Available Training Block</h4>
+                      <h4 className="font-serif text-lg text-[#2C3E50]">Publish Availability Block</h4>
                       <p className="text-stone-400 text-[11px] leading-relaxed mt-0.5">
-                        Set a free block of time (e.g. 09:00 AM - 10:30 AM). Clients can reserve a 45-minute session starting at the start of this block. The rest is blocked for your commute!
+                        Publish open time slots. Clients can reserve a 45-minute training session commencing at the start of the block. A 45-minute buffer is automatically appended for travel and setup.
                       </p>
                     </div>
 
@@ -1090,10 +1657,10 @@ export default function Portal({
                   </form>
 
                   <div className="p-4 bg-[#F5F5F0] border border-[#E5E2DE] text-[11px] text-[#5D6D7E] rounded-sm leading-relaxed space-y-1">
-                    <p className="font-bold text-[#2C3E50]">💡 Travel Time Magic Example:</p>
-                    <p>If you set a free block of <strong>09:00 AM - 10:30 AM (1.5 hrs)</strong>:</p>
-                    <p>• The client sees they can book a session for <strong>09:00 AM - 09:45 AM</strong>.</p>
-                    <p>• This leaves you with 45 minutes of flexible buffer space for travel, setup, and cleanup!</p>
+                    <p className="font-bold text-[#2C3E50]">💡 How the Scheduling System Works:</p>
+                    <p>For example, publishing a block from <strong>09:00 AM to 05:30 PM</strong> will:</p>
+                    <p>• Partition the window into 1.5-hour time blocks (e.g., 09:00 AM, 10:30 AM, 12:00 PM, etc.).</p>
+                    <p>• Provide a 45-minute workout window followed by a 45-minute travel and setup buffer to maintain strict punctuality.</p>
                   </div>
                 </div>
 
@@ -1101,53 +1668,101 @@ export default function Portal({
                 <div className="lg:col-span-7 bg-white border border-[#E5E2DE] p-6 rounded-sm shadow-xs h-[550px] flex flex-col justify-between overflow-y-auto">
                   <div>
                     <div className="border-b border-[#E5E2DE] pb-4 mb-4">
-                      <h4 className="font-serif text-lg text-[#2C3E50] italic">Schedules Calendar List</h4>
+                      <h4 className="font-serif text-lg text-[#2C3E50] italic">Trainer Schedule & Bookings</h4>
                       <p className="text-stone-400 text-xs">Review available slots and client reservations.</p>
                     </div>
 
+                    {/* Horizontal Date Picker Strip (Trainer View) */}
+                    {trainerUniqueDates.length > 0 && (
+                      <div className="mb-4 border-b border-[#F5F5F0] pb-3">
+                        <span className="block text-[9px] font-bold text-[#7F8C8D] uppercase tracking-wider mb-2">Filter Calendar by Date</span>
+                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-stone-200">
+                          {trainerUniqueDates.map((date) => {
+                            const { weekday, day, month } = formatDateForStrip(date);
+                            const isSelected = selectedTrainerCalendarDate === date;
+                            return (
+                              <button
+                                key={date}
+                                type="button"
+                                onClick={() => setSelectedTrainerCalendarDate(date)}
+                                className={`min-w-[55px] h-[65px] rounded-sm border p-1.5 flex flex-col justify-between items-center transition cursor-pointer shrink-0 select-none ${
+                                  isSelected
+                                    ? 'bg-[#C0392B] border-[#C0392B] text-white shadow-xs'
+                                    : 'bg-[#FDFCFB] border-[#E5E2DE] text-[#2C3E50] hover:bg-stone-50'
+                                }`}
+                              >
+                                <span className={`text-[7px] uppercase tracking-wider font-bold block ${isSelected ? 'text-white/80' : 'text-[#7F8C8D]'}`}>
+                                  {weekday}
+                                </span>
+                                <span className="text-base font-serif font-black block leading-none py-0.5">
+                                  {day}
+                                </span>
+                                <span className={`text-[7px] uppercase tracking-wider font-bold block ${isSelected ? 'text-white/80' : 'text-[#7F8C8D]'}`}>
+                                  {month}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     <div className="space-y-3">
-                      {scheduleBlocks.length === 0 ? (
+                      {trainerUniqueDates.length === 0 ? (
                         <div className="p-10 text-center text-stone-400 text-xs italic">
                           No schedule blocks defined. Use the builder on the left to add your first availability slots!
                         </div>
                       ) : (
                         <div className="space-y-2">
-                          {scheduleBlocks.map((block) => (
-                            <div 
-                              key={block.id}
-                              className={`p-4 border rounded-sm flex justify-between items-center text-xs ${
-                                block.isBooked 
-                                  ? 'bg-emerald-50/50 border-emerald-200' 
-                                  : 'bg-[#FDFCFB] border-[#E5E2DE]'
-                              }`}
-                            >
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-1.5 font-bold text-[#2C3E50]">
-                                  <Calendar className="w-3.5 h-3.5 text-[#C0392B]" />
-                                  <span>{block.date}</span>
-                                  <span>•</span>
-                                  <span>{block.startTime} - {block.endTime}</span>
+                          {scheduleBlocks.filter(b => b.date === selectedTrainerCalendarDate).length === 0 ? (
+                            <div className="p-8 text-center bg-[#FDFCFB] border border-dashed border-[#E5E2DE] rounded-sm text-stone-400 text-xs italic">
+                              No slots defined for this day.
+                            </div>
+                          ) : (
+                            scheduleBlocks.filter(b => b.date === selectedTrainerCalendarDate).map((block) => (
+                              <div 
+                                key={block.id}
+                                className={`p-4 border rounded-sm flex justify-between items-center text-xs ${
+                                  block.isBooked 
+                                    ? 'bg-emerald-50/50 border-emerald-200' 
+                                    : 'bg-[#FDFCFB] border-[#E5E2DE]'
+                                }`}
+                              >
+                                <div className="space-y-1 text-left">
+                                  <div className="flex items-center gap-1.5 font-bold text-[#2C3E50]">
+                                    <Calendar className="w-3.5 h-3.5 text-[#C0392B]" />
+                                    <span>{block.startTime} - {block.endTime}</span>
+                                  </div>
+                                  <div className="text-stone-500 font-mono text-[10px]">
+                                    {block.isBooked ? (
+                                      <span className="text-emerald-800 font-semibold uppercase tracking-wider">
+                                        Reserved by: {block.bookedByClientName || 'Registered Client'} (45-Min Call)
+                                      </span>
+                                    ) : (
+                                      <span className="text-stone-400">Available free block</span>
+                                    )}
+                                  </div>
                                 </div>
-                                <div className="text-stone-500 font-mono text-[10px]">
-                                  {block.isBooked ? (
-                                    <span className="text-emerald-800 font-semibold uppercase tracking-wider">
-                                      Reserved by: {block.bookedByClientName || 'Registered Client'} (45-Min Call)
-                                    </span>
-                                  ) : (
-                                    <span className="text-stone-400">Available free block</span>
-                                  )}
-                                </div>
-                              </div>
 
-                              <div className="flex gap-2">
-                                {block.isBooked && (
-                                  <button
-                                    onClick={() => onBookScheduleBlock(block.id, null, null)}
-                                    className="bg-white hover:bg-stone-100 text-stone-600 text-[9px] uppercase font-bold tracking-wider px-2 py-1 rounded-sm border border-stone-200 cursor-pointer"
-                                  >
-                                    Release Slot
-                                  </button>
-                                )}
+                                <div className="flex gap-2">
+                                  {block.isBooked && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleTrainerMarkBlockCompleted(block)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-[9px] uppercase font-bold tracking-wider px-2 py-1 rounded-sm cursor-pointer"
+                                      >
+                                        Mark Completed
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => onBookScheduleBlock(block.id, null, null)}
+                                        className="bg-white hover:bg-stone-100 text-stone-600 text-[9px] uppercase font-bold tracking-wider px-2 py-1 rounded-sm border border-stone-200 cursor-pointer"
+                                      >
+                                        Release Slot
+                                      </button>
+                                    </>
+                                  )}
                                 <button
                                   onClick={() => onDeleteScheduleBlock(block.id)}
                                   className="text-[#C0392B] hover:text-[#A93226] p-1 rounded"
@@ -1157,14 +1772,15 @@ export default function Portal({
                                 </button>
                               </div>
                             </div>
-                          ))}
+                            ))
+                          )}
                         </div>
                       )}
                     </div>
                   </div>
 
                   <p className="text-[10px] text-[#7F8C8D] italic text-center pt-4">
-                    Deleting a block will permanently purge it from both client screens and schedules lists.
+                    Deleting a time slot will permanently remove it from both client booking views and schedule lists.
                   </p>
                 </div>
 
